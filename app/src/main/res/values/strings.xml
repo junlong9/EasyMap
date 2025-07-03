@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">EasyMap</string>
+    <string name="search_hint">Search for places (e.g., dumplings, coffee shops)</string>
+    <string name="search_button">Search</string>
+    <string name="search_results">Search Results</string>
+    <string name="your_location">Your Location</string>
+    <string name="location_permission_required">Location permission required for full functionality</string>
+    <string name="enter_search_term">Please enter a search term</string>
+    <string name="location_not_available">Location not available</string>
+    <string name="ai_service_error">AI service error</string>
+    <string name="failed_connect_ai">Failed to connect to AI service</string>
+</resources>

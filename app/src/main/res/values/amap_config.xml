@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Replace with your actual AMap API key -->
+    <string name="amap_api_key">e676248d5eb741c3f18e4d92bd1e3f96</string>
+</resources> 
