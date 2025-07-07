@@ -35,10 +35,13 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     private static final int PERMISSION_REQUEST_CODE = 1001;
-    private static final String BACKEND_URL = "http://10.0.2.2:8000/chat"; // For emulator (localhost)
+    private static final String BACKEND_URL = "http://10.194.27.176:9000/chat";
     
     private MapView mapView;
     private AMap aMap;
@@ -55,6 +58,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().hide();
+        }
         setContentView(R.layout.activity_main);
         
         Log.d(TAG, "MainActivity onCreate started");
@@ -114,7 +120,6 @@ public class MainActivity extends AppCompatActivity {
         resultsAdapter = new ResultsAdapter(searchResults, new ResultsAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(PlaceResult result) {
-                // Move map to selected location
                 LatLng latLng = new LatLng(result.getLatitude(), result.getLongitude());
                 aMap.moveCamera(com.amap.api.maps.CameraUpdateFactory.newLatLngZoom(latLng, 18));
             }
@@ -205,102 +210,58 @@ public class MainActivity extends AppCompatActivity {
         httpClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                Log.e(TAG, "Chatbot request failed", e);
-                runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, R.string.failed_connect_ai, Toast.LENGTH_LONG).show();
-                    // Fallback to direct AMap search
-                    performDirectAMapSearch(query);
-                });
+                Log.e(TAG, "AI connection failed", e);
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "Failed to connect to AI", Toast.LENGTH_LONG).show());
             }
             
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                 if (response.isSuccessful()) {
                     String responseBody = response.body().string();
-                    Log.d(TAG, "Chatbot response: " + responseBody);
-                    
-                    // Parse the AI response and extract keywords
-                    String[] keywords = parseAIResponse(responseBody);
-                    
-                    runOnUiThread(() -> {
-                        // Search AMap with the extracted keywords
-                        for (String keyword : keywords) {
-                            performDirectAMapSearch(keyword);
-                        }
-                    });
+                    List<PlaceResult> places = parseAIResponse(responseBody);
+                    runOnUiThread(() -> showSearchResults(places));
                 } else {
-                    Log.e(TAG, "Chatbot response error: " + response.code());
-                    runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, R.string.ai_service_error, Toast.LENGTH_LONG).show();
-                        performDirectAMapSearch(query);
-                    });
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "AI service error", Toast.LENGTH_LONG).show());
                 }
             }
         });
     }
     
-    private String[] parseAIResponse(String response) {
-        // Simple parsing - extract keywords from AI response
-        // This is a basic implementation - you might want to improve this
-        String[] lines = response.split("\n");
-        List<String> keywords = new ArrayList<>();
-        
-        for (String line : lines) {
-            if (line.contains("，推荐：") || line.contains("推荐：")) {
-                String[] parts = line.split("推荐：");
-                if (parts.length > 1) {
-                    String[] places = parts[1].split("、");
-                    for (String place : places) {
-                        place = place.trim();
-                        if (!place.isEmpty()) {
-                            keywords.add(place);
-                        }
-                    }
-                }
+    private List<PlaceResult> parseAIResponse(String response) {
+        List<PlaceResult> results = new ArrayList<>();
+        try {
+            JSONObject json = new JSONObject(response);
+            JSONArray arr = json.getJSONArray("results");
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                String name = obj.getString("name");
+                String address = obj.getString("address");
+                double lat = obj.getDouble("latitude");
+                double lng = obj.getDouble("longitude");
+                results.add(new PlaceResult(name, address, lat, lng, address));
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to parse AI response", e);
         }
-        
-        // If no keywords found, use the original query
-        if (keywords.isEmpty()) {
-            keywords.add(response.trim());
-        }
-        
-        return keywords.toArray(new String[0]);
+        return results;
     }
     
-    private void performDirectAMapSearch(String keyword) {
-        if (currentLocation == null) {
-            Toast.makeText(this, R.string.location_not_available, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
-        // For now, we'll create a simple mock result since AMap search SDK is not available
-        // In a real implementation, you would use AMap's web API or another search service
-        Log.d(TAG, "Searching for: " + keyword + " near current location");
-        
-        // Create a mock result for demonstration
-        PlaceResult mockResult = new PlaceResult(
-            keyword + " (示例地点)", // title
-            "这是一个示例地点", // snippet
-            currentLocation.getLatitude() + 0.001, // slightly offset from current location
-            currentLocation.getLongitude() + 0.001,
-            "示例地址"
-        );
-        
+    private void showSearchResults(List<PlaceResult> places) {
         searchResults.clear();
-        searchResults.add(mockResult);
-        
-        // Add marker to map
-        LatLng latLng = new LatLng(mockResult.getLatitude(), mockResult.getLongitude());
-        aMap.addMarker(new MarkerOptions()
-            .position(latLng)
-            .title(mockResult.getTitle())
-            .snippet(mockResult.getSnippet()));
-        
-        // Update RecyclerView adapter
+        aMap.clear();
+        for (PlaceResult place : places) {
+            searchResults.add(place);
+            LatLng latLng = new LatLng(place.getLatitude(), place.getLongitude());
+            aMap.addMarker(new MarkerOptions()
+                .position(latLng)
+                .title(place.getName())
+                .snippet(place.getAddress()));
+        }
         resultsAdapter.updateResults(searchResults);
-        
-        Toast.makeText(this, "搜索功能需要完整的AMap SDK支持", Toast.LENGTH_LONG).show();
+        if (!places.isEmpty()) {
+            LatLng first = new LatLng(places.get(0).getLatitude(), places.get(0).getLongitude());
+            aMap.moveCamera(com.amap.api.maps.CameraUpdateFactory.newLatLngZoom(first, 15));
+        }
     }
     
     @Override
